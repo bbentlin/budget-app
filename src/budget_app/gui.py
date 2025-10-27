@@ -72,7 +72,7 @@ class BudgetApp:
     self._tree.column("category", width=120)
     self._tree.column("memo", width=260)
     self._tree.column("amount", width=100, anchor="e")
-    self.tree.pack(fill="both", expand=True, side="left", padx=(8, 0), pady=8)
+    self._tree.pack(fill="both", expand=True, side="left", padx=(8, 0), pady=8)
 
     scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
     scrollbar.pack(fill="y", side="right", padx=(0, 8), pady=8)
@@ -91,7 +91,7 @@ class BudgetApp:
     ttk.Label(form, text="Category").grid(row=0, column=1, sticky="w", padx=(12, 0))
     ttk.Entry(form, textvariable=self._category_var, width=18).grid(row=1, column=1, sticky="w", padx=(12, 0))
 
-    ttk.Label(form, text="Memo").grid(row=0, columm=2, sticky="w", padx=(12, 0))
+    ttk.Label(form, text="Memo").grid(row=0, column=2, sticky="w", padx=(12, 0))
     ttk.Entry(form, textvariable=self._memo_var, width=30).grid(row=1, column=2, sticky="w", padx=(12, 0))
 
     ttk.Label(form, text="Amount").grid(row=0, column=3, sticky="w", padx=(12, 0))
@@ -134,7 +134,6 @@ class BudgetApp:
     }
     self.transactions.append(transaction)
     self._refresh_tree()
-    self._refresh_tree()
     self._update_summary()
     self._reset_form()
 
@@ -167,7 +166,9 @@ class BudgetApp:
       lines = ["date,category,memo,amount"]
       for tx in self.transactions:
         memo = tx["memo"].replace('"', '""')
-        lines.append(f'{tx["date"].isoformat()},{tx["category"]}, "{memo}", {tx["amount"]}')
+        lines.append(
+          f'{tx["date"].isoformat()},{tx["category"]},"{memo}",{tx["amount"]:.2f}'
+        )
       Path(filepath).write_text("\n".join(lines), encoding="utf-8")
       messagebox.showinfo("Export", f"Transactions exported to {filepath}.")
     except OSError as exc:
