@@ -1,34 +1,49 @@
-class Repository:
-    def __init__(self, storage_file='transactions.json'):
-        self.storage_file = storage_file
-        self.transactions = self.load_transactions()
+from __future__ import annotations
 
-    def load_transactions(self):
-        try:
-            with open(self.storage_file, 'r') as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return []
-        except json.JSONDecodeError:
-            return []
+import json
+from datetime import date
+from decimal import Decimal, InvalidOperation
+from pathlib import Path
+from typing import Iterable
 
-    def save_transactions(self):
-        with open(self.storage_file, 'w') as file:
-            json.dump(self.transactions, file)
+from budget_app.models.transaction import Transaction
 
-    def add_transaction(self, transaction):
-        self.transactions.append(transaction)
-        self.save_transactions()
+class TransactionRepository:
+  def __init__(self, path: Path) -> None:
+    self._path = path
 
-    def remove_transaction(self, transaction_id):
-        self.transactions = [t for t in self.transactions if t['id'] != transaction_id]
-        self.save_transactions()
-
-    def get_all_transactions(self):
-        return self.transactions
-
-    def find_transaction(self, transaction_id):
-        for transaction in self.transactions:
-            if transaction['id'] == transaction_id:
-                return transaction
-        return None
+  def load(self) -> list[Transaction]:
+    if not self._path.exists():
+      return []
+    try:
+      payload = json.loads(self._path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+      return []
+    
+    transactions: list[Transaction] = []
+    for item in payload:
+      try:
+        transactions.append(
+          Transaction(
+            date=date.fromisoformat(item["date"]),
+            category=item["category"],
+            memo=item.get("memo", ""),
+            amount=Decimal(item["amount"]),
+          )
+        )
+      except (KeyError, ValueError, InvalidOperation):
+        continue
+    return transactions
+  
+  def save(self, transactions: Iterable[Transaction]) -> None:
+    serializable = [
+      {
+        "date": tx.date.isoformat(),
+        "category": tx.category,
+        "memo": tx.memo,
+        "amount": format(tx.amount, "f"),
+      }
+      for tx in transactions
+    ]
+    self._path.parent.mkdir(parents=True, exist_ok=True)
+    self._path.write_text(json.dumps(serializable, indent=2), encoding="utf-8")
