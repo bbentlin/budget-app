@@ -18,12 +18,14 @@ class TestTransactionRepository(unittest.TestCase):
           raw_category="Salary",
           raw_memo="Monthly pay",
           raw_amount="3500.00",
+          raw_kind="income",
         ),
         Transaction.from_input(
           raw_date="2024-05-02",
           raw_category="Rent",
           raw_memo="May Rent",
-          raw_amount="-1200.00",
+          raw_amount="1200.00",
+          raw_kind="expense",
         ),
       ]
 
