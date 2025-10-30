@@ -28,11 +28,13 @@ class BudgetApp:
         self._category_var = tk.StringVar()
         self._memo_var = tk.StringVar()
         self._date_var = tk.StringVar(value=date.today().isoformat())
+        self._tx_kind_var = tk.StringVar(value="Income")
+        self._editing_index: int | None = None
 
         self._configure_style()
         self._build_menu()
         self._build_layout()
-        self._style_treeview()
+        self._tree.bind("<Double-1>", self._on_start_edit)
         self._refresh_tree()
         self._update_summary()
 
@@ -127,7 +129,8 @@ class BudgetApp:
 
         tree_actions = ttk.Frame(tree_frame)
         tree_actions.pack(fill="x", side="bottom", anchor="e", padx=8, pady=(0, 8))
-        ttk.Button(tree_actions, text="Delete Selected", style="Accent.TButton", command=self._on_delete_selected).pack(anchor="e")
+        ttk.Button(tree_actions, text="Delete Selected", command=self._on_delete_selected).pack(side="right")
+        ttk.Button(tree_actions, text="Edit Selected", command=self._on_start_edit).pack(side="right", padx=(0, 8))
 
         form = ttk.LabelFrame(container, text="Add Transaction", padding=12)
         form.pack(fill="x")
@@ -141,16 +144,26 @@ class BudgetApp:
         ttk.Label(form, text="Memo").grid(row=0, column=2, sticky="w", padx=(12, 0))
         ttk.Entry(form, textvariable=self._memo_var, width=30).grid(row=1, column=2, sticky="w", padx=(12, 0))
 
-        ttk.Label(form, text="Amount").grid(row=0, column=3, sticky="w", padx=(12, 0))
-        ttk.Entry(form, textvariable=self._amount_var, width=14).grid(row=1, column=3, sticky="w", padx=(12, 0))
+        ttk.Label(form, text="Type").grid(row=0, column=3, sticky="w", padx=(12, 0))
+        ttk.Combobox(
+            form,
+            textvariable=self._tx_kind_var,
+            values=("Income", "Expense"),
+            state="readonly",
+            width=12,
+        ).grid(row=1, column=3, sticky="w", padx=(12, 0))
 
-        ttk.Button(form, text="Add", style="Accent.TButton", command=self._on_add_transaction).grid(
-            row=1,
-            column=4,
-            padx=(18, 0),
-        )
+        ttk.Label(form, text="Amount").grid(row=0, column=4, sticky="w", padx=(12, 0))
+        ttk.Entry(form, textvariable=self._amount_var, width=14).grid(row=1, column=4, sticky="w", padx=(12, 0))
 
-        for col in range(5):
+        self._submit_button = ttk.Button(form, text="Add", command=self._on_add_transaction)
+        self._submit_button.grid(row=1, column=5, padx=(18, 0))
+
+        self._cancel_button = ttk.Button(form, text="Cancel", command=self._on_cancel_edit)
+        self._cancel_button.grid(row=1, column=6, padx=(12, 0))
+        self._cancel_button.grid_remove()
+
+        for col in range(7):
             form.columnconfigure(col, weight=1 if col == 2 else 0)
 
     def _on_add_transaction(self) -> None:
@@ -160,17 +173,28 @@ class BudgetApp:
                 raw_category=self._category_var.get(),
                 raw_memo=self._memo_var.get(),
                 raw_date=self._date_var.get(),
+                raw_kind=self._tx_kind_var.get(),
             )
         except ValueError as exc:
             messagebox.showerror("Invalid Input", str(exc))
             return
 
-        self.transactions.append(transaction)
-        if not self._persist():
-            self.transactions.pop()
-            return
+        if self._editing_index is None:
+            self.transactions.append(transaction)
+            if not self._persist():
+                self.transactions.pop()
+                return
+        else:
+            index = self._editing_index
+            previous = self.transactions[index]
+            self.transactions[index] = transaction
+            if not self._persist():
+                self.transactions[index] = previous
+                return
+
         self._refresh_tree()
         self._update_summary()
+        self._exit_edit_mode()
         self._reset_form()
 
     def _on_delete_selected(self) -> None:
@@ -190,7 +214,8 @@ class BudgetApp:
         
         if not removed:
             return
-        
+
+        self._exit_edit_mode()
         if not self._persist():
             for index, tx in reversed(removed):
                 self.transactions.insert(index, tx)
@@ -198,6 +223,7 @@ class BudgetApp:
         
         self._refresh_tree()
         self._update_summary()
+        self._reset_form()
 
     def _on_export_csv(self) -> None:
         if not self.transactions:
@@ -232,7 +258,6 @@ class BudgetApp:
         for item in self._tree.get_children():
             self._tree.delete(item)
         for idx, tx in enumerate(self.transactions):
-            tag = "evenrow" if idx % 2 == 0 else "oddrow"
             self._tree.insert(
                 "",
                 "end",
@@ -243,7 +268,7 @@ class BudgetApp:
                     tx.memo,
                     f"${tx.amount:.2f}",
                 ),
-                tags=(tag,),
+                tags=("evenrow" if idx % 2 == 0 else "oddrow",),
             )
 
     def _update_summary(self) -> None:
@@ -259,6 +284,7 @@ class BudgetApp:
         self._memo_var.set("")
         self._category_var.set("")
         self._date_var.set(date.today().isoformat())
+        self._tx_kind_var.set("Income")
 
     def _persist(self) -> bool:
         try:
@@ -271,3 +297,38 @@ class BudgetApp:
     def _on_close(self) -> None:
         if self._persist():
             self.root.destroy()
+
+    def _on_start_edit(self, event: tk.Event | None = None) -> None:
+        if event is not None:
+            item_id = self._tree.identify_row(event.y)
+            if item_id:
+                self._tree.selection_set(item_id)
+
+        selected = self._tree.selection()
+        if not selected:
+            if event is None:
+                messagebox.showinfo("Edit Transaction", "Select a transaction to edit.")
+            return
+
+        index = int(self._tree.item(selected[0], "text"))
+        if not (0 <= index < len(self.transactions)):
+            return
+
+        tx = self.transactions[index]
+        self._editing_index = index
+        self._date_var.set(tx.date.isoformat())
+        self._category_var.set(tx.category)
+        self._memo_var.set(tx.memo)
+        self._amount_var.set(format(abs(tx.amount), "f"))
+        self._tx_kind_var.set("Income" if tx.amount >= 0 else "Expense")
+        self._submit_button.config(text="Save")
+        self._cancel_button.grid()
+
+    def _on_cancel_edit(self) -> None:
+        self._exit_edit_mode()
+        self._reset_form()
+
+    def _exit_edit_mode(self) -> None:
+        self._editing_index = None
+        self._submit_button.config(text="Add")
+        self._cancel_button.grid_remove()
