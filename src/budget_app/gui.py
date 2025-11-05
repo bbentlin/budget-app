@@ -3,16 +3,17 @@ from tkinter import filedialog, messagebox, ttk
 from datetime import date
 from pathlib import Path
 
-from budget_app.storage.repository import TransactionRepository
 from budget_app.models.transaction import Transaction
+from budget_app.storage.repository import TransactionRepository
+
 
 class BudgetApp:
     def __init__(self) -> None:
         self.root = tk.Tk()
         self.root.title("Budget App")
-        self.root.geometry("800x520")
-        self.root.minsize(720, 440)
-        self.root.configure(bg="#f5f5f7")
+        self.root.geometry("900x560")
+        self.root.minsize(780, 480)
+        self.root.configure(bg="#f4f5f8")
 
         data_path = Path.home() / ".budget_app" / "transactions.json"
         self._repository = TransactionRepository(data_path)
@@ -28,13 +29,37 @@ class BudgetApp:
         self._category_var = tk.StringVar()
         self._memo_var = tk.StringVar()
         self._date_var = tk.StringVar(value=date.today().isoformat())
+        self._default_categories = [
+            "Salary",
+            "Bonus",
+            "Savings",
+            "Rent",
+            "Mortgage",
+            "Groceries",
+            "Dining",
+            "Utilities",
+            "Insurance",
+            "Transportation",
+            "Entertainment",
+            "Healthcare",
+            "Subscriptions",
+            "Education",
+            "Pets",
+            "Miscellaneous",
+        ]
         self._tx_kind_var = tk.StringVar(value="Income")
         self._editing_index: int | None = None
 
         self._configure_style()
         self._build_menu()
         self._build_layout()
+        self._style_treeview()
+        self._bind_shortcuts()
+        self._build_context_menu()
         self._tree.bind("<Double-1>", self._on_start_edit)
+        self._tree.bind("<Button-3>", self._open_tree_menu)
+        self._tree.bind("<Button-2>", self._open_tree_menu)
+        self._tree.bind("<Control-Button-1>", self._open_tree_menu)
         self._refresh_tree()
         self._update_summary()
 
@@ -47,44 +72,95 @@ class BudgetApp:
         style = ttk.Style(self.root)
         style.theme_use("clam")
 
-        primary_bg = "#f5f5f7"
-        surface_bg = "#ffffff"
-        accent = "#2d7ff9"
-        accent_darker = "#1f5ebe"
-        text_primary = "#1c1c1e"
-        text_muted = "#6e6e73"
+        palette = {
+            "background": "#f4f5f8",
+            "surface": "#ffffff",
+            "border": "#d0d5dd",
+            "accent": "#4c6ef5",
+            "accent_hover": "#3b5bdb",
+            "danger": "#f03e3e",
+            "danger_hover": "#c92a2a",
+            "text": "#1f2430",
+            "muted": "#667085",
+            "stripe_even": "#f9fafc",
+            "stripe_odd": "#eef2ff",
+        }
 
-        style.configure("TFrame", background=primary_bg)
-        style.configure("TLabelframe", background=primary_bg, borderwidth=0)
-        style.configure("TLabelframe.Label", background=primary_bg, foreground=text_muted)
-        style.configure("Summary.TFrame", background=surface_bg, relief="flat")
-        style.configure("Summary.TLabel", background=surface_bg, foreground=text_muted, font=("Helvetica Neue", 13))
-        style.configure("SummaryValue.TLabel", background=surface_bg, foreground=text_primary, font=("Helvetica Neue", 18, "bold"))
+        self.root.option_add("*Font", "{Helvetica Neue} 12")
+        self.root.option_add("*TCombobox*Font", "{Helvetica Neue} 12")
+        self.root.option_add("*TEntry.Font", "{Helvetica Neue} 12")
 
+        style.configure("TFrame", background=palette["background"])
+        style.configure("Card.TFrame", background=palette["surface"], borderwidth=0)
+        style.configure(
+            "CardHeading.TLabel",
+            background=palette["surface"],
+            foreground=palette["text"],
+            font=("Helvetica Neue", 14, "bold"),
+        )
+        style.configure(
+            "Caption.TLabel",
+            background=palette["surface"],
+            foreground=palette["muted"],
+            font=("Helvetica Neue", 11),
+        )
+        style.configure(
+            "Summary.TLabel",
+            background=palette["surface"],
+            foreground=palette["muted"],
+            font=("Helvetica Neue", 13),
+        )
+        style.configure(
+            "SummaryValue.TLabel",
+            background=palette["surface"],
+            foreground=palette["text"],
+            font=("Helvetica Neue", 20, "bold"),
+        )
         style.configure(
             "Accent.TButton",
-            background=accent,
+            background=palette["accent"],
             foreground="#ffffff",
             borderwidth=0,
             focusthickness=3,
-            focuscolor=accent_darker,
-            padding=(16, 8),
+            focuscolor=palette["accent_hover"],
+            padding=(18, 8),
         )
         style.map(
             "Accent.TButton",
-            background=[("active", accent_darker), ("pressed", accent_darker)],
+            background=[("active", palette["accent_hover"]), ("pressed", palette["accent_hover"])],
         )
-
+        style.configure(
+            "Danger.TButton",
+            background=palette["danger"],
+            foreground="#ffffff",
+            borderwidth=0,
+            padding=(18, 8),
+        )
+        style.map(
+            "Danger.TButton",
+            background=[("active", palette["danger_hover"]), ("pressed", palette["danger_hover"])],
+        )
         style.configure(
             "Treeview",
-            background=surface_bg,
-            foreground=text_primary,
-            fieldbackground=surface_bg,
-            bordercolor=primary_bg,
-            rowheight=28,
+            background=palette["surface"],
+            foreground=palette["text"],
+            fieldbackground=palette["surface"],
+            borderwidth=0,
+            rowheight=30,
         )
-        style.map("Treeview", background=[("selected", accent), ("!selected", surface_bg)], foreground=[("selected", "#ffffff")])
-        style.configure("Treeview.Heading", background=primary_bg, foreground=text_muted, font=("Helvetica Neue", 12, "bold"))
+        style.map(
+            "Treeview",
+            background=[("selected", palette["accent"])],
+            foreground=[("selected", "#ffffff")],
+        )
+        style.configure(
+            "Treeview.Heading",
+            background=palette["background"],
+            foreground=palette["muted"],
+            font=("Helvetica Neue", 12, "bold"),
+        )
+
+        self._palette = palette
 
     def _build_menu(self) -> None:
         menu_bar = tk.Menu(self.root)
@@ -96,75 +172,159 @@ class BudgetApp:
         self.root.config(menu=menu_bar)
 
     def _build_layout(self) -> None:
-        container = ttk.Frame(self.root, padding=16)
+        container = ttk.Frame(self.root, padding=20)
         container.pack(fill="both", expand=True)
 
         summary_frame = ttk.Frame(container)
-        summary_frame.pack(fill="x", pady=(0, 16))
-        for idx, (label, var) in enumerate(self._summary_vars.items()):
-            block = ttk.Frame(summary_frame, padding=12)
-            block.grid(row=0, column=idx, sticky="nsew", padx=8)
-            summary_frame.columnconfigure(idx, weight=1)
-            ttk.Label(block, text=label.title(), style="Summary.TLabel").pack(anchor="w")
-            ttk.Label(block, textvariable=var, style="SummaryValue.TLabel").pack(anchor="w")
+        summary_frame.pack(fill="x", pady=(0, 20))
+        summary_frame.columnconfigure((0, 1, 2), weight=1)
 
-        tree_frame = ttk.LabelFrame(container, text="Transactions")
-        tree_frame.pack(fill="both", expand=True, pady=(0, 16))
+        for idx, (label, var) in enumerate(self._summary_vars.items()):
+            block = ttk.Frame(summary_frame, style="Card.TFrame", padding=18)
+            block.grid(row=0, column=idx, sticky="nsew", padx=10)
+            ttk.Label(block, text=label.title(), style="Summary.TLabel").pack(anchor="w")
+            ttk.Label(block, textvariable=var, style="SummaryValue.TLabel").pack(anchor="w", pady=(6, 0))
+
+        tree_card = ttk.Frame(container, style="Card.TFrame", padding=18)
+        tree_card.pack(fill="both", expand=True, pady=(0, 20))
+        ttk.Label(tree_card, text="Transactions", style="CardHeading.TLabel").pack(anchor="w", pady=(0, 10))
+
+        tree_container = ttk.Frame(tree_card, style="Card.TFrame")
+        tree_container.pack(fill="both", expand=True)
 
         columns = ("date", "category", "memo", "amount")
-        self._tree = ttk.Treeview(tree_frame, columns=columns, show="headings", height=10)
+        self._tree = ttk.Treeview(tree_container, columns=columns, show="headings", height=10)
         self._tree.heading("date", text="Date")
         self._tree.heading("category", text="Category")
         self._tree.heading("memo", text="Memo")
         self._tree.heading("amount", text="Amount")
-        self._tree.column("date", width=90, anchor="center")
-        self._tree.column("category", width=120)
-        self._tree.column("memo", width=260)
-        self._tree.column("amount", width=100, anchor="e")
-        self._tree.pack(fill="both", expand=True, side="left", padx=(8, 0), pady=8)
+        self._tree.column("date", width=110, anchor="center")
+        self._tree.column("category", width=160, anchor="w")
+        self._tree.column("memo", width=320, anchor="w")
+        self._tree.column("amount", width=120, anchor="e")
+        self._tree.pack(fill="both", expand=True, side="left")
 
-        scrollbar = ttk.Scrollbar(tree_frame, orient="vertical", command=self._tree.yview)
-        scrollbar.pack(fill="y", side="right", padx=(0, 8), pady=8)
+        scrollbar = ttk.Scrollbar(tree_container, orient="vertical", command=self._tree.yview)
+        scrollbar.pack(fill="y", side="right", padx=(8, 0))
         self._tree.configure(yscrollcommand=scrollbar.set)
 
-        tree_actions = ttk.Frame(tree_frame)
-        tree_actions.pack(fill="x", side="bottom", anchor="e", padx=8, pady=(0, 8))
-        ttk.Button(tree_actions, text="Delete Selected", command=self._on_delete_selected).pack(side="right")
-        ttk.Button(tree_actions, text="Edit Selected", command=self._on_start_edit).pack(side="right", padx=(0, 8))
+        tree_actions = ttk.Frame(tree_card, style="Card.TFrame")
+        tree_actions.pack(fill="x", pady=(12, 0))
+        ttk.Button(tree_actions, text="Edit Selected", command=self._on_start_edit).pack(side="right", padx=(0, 10))
+        ttk.Button(tree_actions, text="Delete Selected", style="Danger.TButton", command=self._on_delete_selected).pack(
+            side="right"
+        )
 
-        form = ttk.LabelFrame(container, text="Add Transaction", padding=12)
-        form.pack(fill="x")
+        form_card = ttk.Frame(container, style="Card.TFrame", padding=18)
+        form_card.pack(fill="x")
+        ttk.Label(form_card, text="Transaction Details", style="CardHeading.TLabel").grid(
+            row=0, column=0, columnspan=7, sticky="w", pady=(0, 12)
+        )
 
-        ttk.Label(form, text="Date (YYYY-MM-DD)").grid(row=0, column=0, sticky="w")
-        ttk.Entry(form, textvariable=self._date_var, width=18).grid(row=1, column=0, sticky="w")
+        ttk.Label(form_card, text="Date (YYYY-MM-DD)", style="Caption.TLabel").grid(row=1, column=0, sticky="w")
+        self._date_entry = ttk.Entry(form_card, textvariable=self._date_var, width=18)
+        self._date_entry.grid(row=2, column=0, sticky="we")
 
-        ttk.Label(form, text="Category").grid(row=0, column=1, sticky="w", padx=(12, 0))
-        ttk.Entry(form, textvariable=self._category_var, width=18).grid(row=1, column=1, sticky="w", padx=(12, 0))
+        ttk.Label(form_card, text="Category", style="Caption.TLabel").grid(row=1, column=1, sticky="w", padx=(12, 0))
+        self._category_combo = ttk.Combobox(
+            form_card,
+            textvariable=self._category_var,
+            values=self._default_categories,
+            width=22,
+        )
+        self._category_combo.grid(row=2, column=1, sticky="we", padx=(12, 0))
+        self._category_combo.bind("<Return>", lambda _: self._on_add_transaction())
+        self._category_combo.bind("<KP_Enter>", lambda _: self._on_add_transaction())
+        self._category_combo.bind("<<ComboboxSelected>>", lambda _: self._category_combo.focus_set())
 
-        ttk.Label(form, text="Memo").grid(row=0, column=2, sticky="w", padx=(12, 0))
-        ttk.Entry(form, textvariable=self._memo_var, width=30).grid(row=1, column=2, sticky="w", padx=(12, 0))
+        ttk.Label(form_card, text="Memo", style="Caption.TLabel").grid(row=1, column=2, sticky="w", padx=(12, 0))
+        self._memo_entry = ttk.Entry(form_card, textvariable=self._memo_var)
+        self._memo_entry.grid(row=2, column=2, sticky="we", padx=(12, 0))
 
-        ttk.Label(form, text="Type").grid(row=0, column=3, sticky="w", padx=(12, 0))
-        ttk.Combobox(
-            form,
+        ttk.Label(form_card, text="Type", style="Caption.TLabel").grid(row=1, column=3, sticky="w", padx=(12, 0))
+        self._type_combo = ttk.Combobox(
+            form_card,
             textvariable=self._tx_kind_var,
             values=("Income", "Expense"),
             state="readonly",
-            width=12,
-        ).grid(row=1, column=3, sticky="w", padx=(12, 0))
+            width=14,
+        )
+        self._type_combo.grid(row=2, column=3, sticky="we", padx=(12, 0))
+        self._type_combo.current(0)
 
-        ttk.Label(form, text="Amount").grid(row=0, column=4, sticky="w", padx=(12, 0))
-        ttk.Entry(form, textvariable=self._amount_var, width=14).grid(row=1, column=4, sticky="w", padx=(12, 0))
+        ttk.Label(form_card, text="Amount", style="Caption.TLabel").grid(row=1, column=4, sticky="w", padx=(12, 0))
+        self._amount_entry = ttk.Entry(form_card, textvariable=self._amount_var, width=16)
+        self._amount_entry.grid(row=2, column=4, sticky="we", padx=(12, 0))
 
-        self._submit_button = ttk.Button(form, text="Add", command=self._on_add_transaction)
-        self._submit_button.grid(row=1, column=5, padx=(18, 0))
+        self._submit_button = ttk.Button(form_card, text="Add", style="Accent.TButton", command=self._on_add_transaction)
+        self._submit_button.grid(row=2, column=5, padx=(18, 0))
 
-        self._cancel_button = ttk.Button(form, text="Cancel", command=self._on_cancel_edit)
-        self._cancel_button.grid(row=1, column=6, padx=(12, 0))
+        self._cancel_button = ttk.Button(form_card, text="Cancel", command=self._on_cancel_edit)
+        self._cancel_button.grid(row=2, column=6, padx=(12, 0))
         self._cancel_button.grid_remove()
 
         for col in range(7):
-            form.columnconfigure(col, weight=1 if col == 2 else 0)
+            form_card.columnconfigure(col, weight=1 if col == 2 else 0)
+
+        self._date_entry.focus_set()
+
+    def _style_treeview(self) -> None:
+        self._tree.tag_configure("evenrow", background=self._palette["stripe_even"])
+        self._tree.tag_configure("oddrow", background=self._palette["stripe_odd"])
+
+    def _bind_shortcuts(self) -> None:
+        def submit(event: tk.Event | None = None) -> str:
+            focus_widget = self.root.focus_get()
+            form_widgets = {
+                self._date_entry,
+                self._category_combo,  # <<< swapped in combobox
+                self._memo_entry,
+                self._type_combo,
+                self._amount_entry,
+                self._submit_button,
+            }
+            if focus_widget in form_widgets:
+                self._on_add_transaction()
+                return "break"
+            return ""
+
+        def cancel(event: tk.Event | None = None) -> str:
+            if self._editing_index is not None:
+                self._on_cancel_edit()
+                return "break"
+            return ""
+
+        for widget in (
+            self._date_entry,
+            self._category_combo,  # <<< swapped in combobox
+            self._memo_entry,
+            self._type_combo,
+            self._amount_entry,
+            self._submit_button,
+        ):
+            widget.bind("<Return>", submit)
+            widget.bind("<KP_Enter>", submit)
+
+        self.root.bind("<Escape>", cancel)
+        self.root.bind("<Return>", submit)
+        self.root.bind("<KP_Enter>", submit)
+
+    def _build_context_menu(self) -> None:
+        self._tree_menu = tk.Menu(self.root, tearoff=False)
+        self._tree_menu.add_command(label="Edit", command=self._on_start_edit)
+        self._tree_menu.add_command(label="Delete", command=self._on_delete_selected)
+        self._tree_menu.add_separator()
+        self._tree_menu.add_command(label="Export CSV…", command=self._on_export_csv)
+
+    def _open_tree_menu(self, event: tk.Event) -> None:
+        item_id = self._tree.identify_row(event.y)
+        if item_id:
+            self._tree.selection_set(item_id)
+            self._tree.focus(item_id)
+        try:
+            self._tree_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._tree_menu.grab_release()
 
     def _on_add_transaction(self) -> None:
         try:
@@ -181,6 +341,7 @@ class BudgetApp:
 
         if self._editing_index is None:
             self.transactions.append(transaction)
+            focus_index = len(self.transactions) - 1
             if not self._persist():
                 self.transactions.pop()
                 return
@@ -188,11 +349,12 @@ class BudgetApp:
             index = self._editing_index
             previous = self.transactions[index]
             self.transactions[index] = transaction
+            focus_index = index
             if not self._persist():
                 self.transactions[index] = previous
                 return
 
-        self._refresh_tree()
+        self._refresh_tree(focus_index=focus_index)
         self._update_summary()
         self._exit_edit_mode()
         self._reset_form()
@@ -201,8 +363,8 @@ class BudgetApp:
         selected = self._tree.selection()
         if not selected:
             messagebox.showinfo("Delete Transaction", "Select at least one transaction to delete.")
-            return 
-        
+            return
+
         indexes = sorted(
             (int(self._tree.item(item_id, "text")) for item_id in selected),
             reverse=True,
@@ -211,7 +373,7 @@ class BudgetApp:
         for index in indexes:
             if 0 <= index < len(self.transactions):
                 removed.append((index, self.transactions.pop(index)))
-        
+
         if not removed:
             return
 
@@ -220,7 +382,7 @@ class BudgetApp:
             for index, tx in reversed(removed):
                 self.transactions.insert(index, tx)
             return
-        
+
         self._refresh_tree()
         self._update_summary()
         self._reset_form()
@@ -238,7 +400,7 @@ class BudgetApp:
         if not filepath:
             return
 
-        try: 
+        try:
             lines = ["date,category,memo,amount"]
             for tx in self.transactions:
                 memo = tx.memo.replace('"', '""')
@@ -250,15 +412,12 @@ class BudgetApp:
         except OSError as exc:
             messagebox.showerror("Export Failed", f"Could not export transactions:\n{exc!s}")
 
-    def _style_treeview(self) -> None:
-        self._tree.tag_configure("oddrow", background="#f0f6ff")
-        self._tree.tag_configure("evenrow", background="#ffffff")
-
-    def _refresh_tree(self) -> None:
-        for item in self._tree.get_children():
-            self._tree.delete(item)
+    def _refresh_tree(self, *, focus_index: int | None = None) -> None:
+        self._tree.delete(*self._tree.get_children())
+        item_ids: list[str] = []
         for idx, tx in enumerate(self.transactions):
-            self._tree.insert(
+            tag = "evenrow" if idx % 2 == 0 else "oddrow"
+            item_id = self._tree.insert(
                 "",
                 "end",
                 text=str(idx),
@@ -268,8 +427,17 @@ class BudgetApp:
                     tx.memo,
                     f"${tx.amount:.2f}",
                 ),
-                tags=("evenrow" if idx % 2 == 0 else "oddrow",),
+                tags=(tag,),
             )
+            item_ids.append(item_id)
+
+        if focus_index is not None and 0 <= focus_index < len(item_ids):
+            item_id = item_ids[focus_index]
+            self._tree.selection_set(item_id)
+            self._tree.focus(item_id)
+            self._tree.see(item_id)
+        elif item_ids:
+            self._tree.see(item_ids[-1])
 
     def _update_summary(self) -> None:
         income = sum(tx.amount for tx in self.transactions if tx.amount >= 0)
@@ -283,8 +451,11 @@ class BudgetApp:
         self._amount_var.set("")
         self._memo_var.set("")
         self._category_var.set("")
+        self._category_combo.set("")  # <<< clear combo selection
         self._date_var.set(date.today().isoformat())
         self._tx_kind_var.set("Income")
+        self._type_combo.current(0)
+        self._date_entry.focus_set()
 
     def _persist(self) -> bool:
         try:
@@ -318,11 +489,14 @@ class BudgetApp:
         self._editing_index = index
         self._date_var.set(tx.date.isoformat())
         self._category_var.set(tx.category)
+        self._category_combo.set(tx.category)  # <<< populate combo during edit
         self._memo_var.set(tx.memo)
         self._amount_var.set(format(abs(tx.amount), "f"))
         self._tx_kind_var.set("Income" if tx.amount >= 0 else "Expense")
+        self._type_combo.set("Income" if tx.amount >= 0 else "Expense")
         self._submit_button.config(text="Save")
         self._cancel_button.grid()
+        self._date_entry.focus_set()
 
     def _on_cancel_edit(self) -> None:
         self._exit_edit_mode()
